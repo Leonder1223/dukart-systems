@@ -1,0 +1,210 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  STAFF
+  SUPERVISOR
+  ADMIN
+}
+
+enum ContactRequestStatus {
+  NEW
+  IN_REVIEW
+  REJECTED
+  CONVERTED
+}
+
+enum OrderStatus {
+  REQUEST_RECEIVED
+  CONSULTATION
+  PARTS_SELECTION
+  AWAITING_CUSTOMER_CONFIRMATION
+  PARTS_ORDERED
+  PARTS_ARRIVED
+  ASSEMBLY
+  WINDOWS_DRIVERS_TESTS
+  COMPLETED
+  PICKED_UP
+  DELIVERED
+  PAUSED
+}
+
+enum FulfillmentType {
+  PICKUP
+  SHIPPING
+}
+
+enum DocumentType {
+  QUOTE
+  INVOICE
+  OTHER
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  role           Role
+  isActive       Boolean  @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  customer       Customer?
+  staffProfile   StaffProfile?
+
+  createdOrders  Order[]  @relation("CreatedOrders")
+  assignedOrders Order[]  @relation("AssignedOrders")
+
+  orderUpdates   OrderUpdate[]
+  documents      Document[]
+  invitations    Invitation[] @relation("CreatedInvitations")
+}
+
+model Customer {
+  id                String   @id @default(cuid())
+  userId            String?  @unique
+  customerNumber    String   @unique
+  firstName         String
+  lastName          String
+  email             String
+  phone             String
+  street            String?
+  zipCode           String?
+  city              String?
+  country           String?
+  isActive          Boolean  @default(true)
+  notesInternal     String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User?    @relation(fields: [userId], references: [id])
+  invitations       Invitation[]
+  orders            Order[]
+}
+
+model StaffProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  displayName String
+  position    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model Invitation {
+  id              String   @id @default(cuid())
+  customerId      String
+  email           String
+  tokenHash       String   @unique
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  customer        Customer @relation(fields: [customerId], references: [id])
+  createdByUser   User     @relation("CreatedInvitations", fields: [createdByUserId], references: [id])
+}
+
+model ContactRequest {
+  id                    String               @id @default(cuid())
+  name                  String
+  contact               String
+  subject               String
+  message               String
+  status                ContactRequestStatus @default(NEW)
+  convertedToCustomerId String?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
+
+model Order {
+  id                      String          @id @default(cuid())
+  orderNumber             String          @unique
+  customerId              String
+  title                   String
+  description             String?
+  status                  OrderStatus     @default(REQUEST_RECEIVED)
+  estimatedCompletionDate DateTime?
+  finalPrice              Decimal?        @db.Decimal(10, 2)
+  currency                String          @default("EUR")
+  fulfillmentType         FulfillmentType?
+  shippingStatus          String?
+  isCompleted             Boolean         @default(false)
+  completedAt             DateTime?
+  createdByUserId         String
+  assignedToUserId        String?
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  customer                Customer        @relation(fields: [customerId], references: [id])
+  createdByUser           User            @relation("CreatedOrders", fields: [createdByUserId], references: [id])
+  assignedToUser          User?           @relation("AssignedOrders", fields: [assignedToUserId], references: [id])
+
+  parts                   OrderPart[]
+  updates                 OrderUpdate[]
+  documents               Document[]
+}
+
+model OrderPart {
+  id           String   @id @default(cuid())
+  orderId      String
+  name         String
+  category     String
+  quantity     Int      @default(1)
+  unitPrice    Decimal? @db.Decimal(10, 2)
+  supplier     String?
+  isOrdered    Boolean  @default(false)
+  orderedAt    DateTime?
+  isArrived    Boolean  @default(false)
+  arrivedAt    DateTime?
+  trackingInfo String?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  order        Order    @relation(fields: [orderId], references: [id])
+}
+
+model OrderUpdate {
+  id                  String   @id @default(cuid())
+  orderId             String
+  authorUserId        String
+  title               String
+  message             String
+  isVisibleToCustomer Boolean  @default(true)
+  createdAt           DateTime @default(now())
+
+  order               Order    @relation(fields: [orderId], references: [id])
+  authorUser          User     @relation(fields: [authorUserId], references: [id])
+}
+
+model Document {
+  id                  String       @id @default(cuid())
+  orderId             String
+  uploadedByUserId    String
+  type                DocumentType
+  fileName            String
+  filePath            String
+  mimeType            String?
+  isVisibleToCustomer Boolean      @default(false)
+  createdAt           DateTime     @default(now())
+
+  order               Order        @relation(fields: [orderId], references: [id])
+  uploadedByUser      User         @relation(fields: [uploadedByUserId], references: [id])
+}
